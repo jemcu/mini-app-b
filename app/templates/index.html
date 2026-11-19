@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Trivia de cultura general</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, sans-serif;
+        color: #172033;
+        background: #f2f5fb;
+      }
+
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        margin: 0;
+        padding: 1.5rem;
+        box-sizing: border-box;
+      }
+
+      main {
+        width: min(100%, 38rem);
+        padding: 2rem;
+        border-radius: 1rem;
+        background: white;
+        box-shadow: 0 1rem 3rem #1720331a;
+      }
+
+      h1 {
+        margin-top: 0;
+        color: #263d80;
+      }
+
+      #progreso,
+      #puntaje {
+        color: #4b5872;
+        font-weight: 600;
+      }
+
+      #opciones {
+        display: grid;
+        gap: 0.75rem;
+        margin: 1.5rem 0;
+      }
+
+      button {
+        padding: 0.8rem 1rem;
+        border: 1px solid #c8d1e2;
+        border-radius: 0.6rem;
+        background: white;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) {
+        border-color: #405fbd;
+        background: #f2f5ff;
+      }
+
+      button:focus-visible {
+        outline: 3px solid #91a8f4;
+        outline-offset: 2px;
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.75;
+      }
+
+      #siguiente {
+        background: #304fa6;
+        border-color: #304fa6;
+        color: white;
+        text-align: center;
+      }
+
+      #mensaje {
+        min-height: 1.5rem;
+        font-weight: 700;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Trivia de cultura general</h1>
+      <p id="progreso" aria-live="polite"></p>
+      <p id="puntaje">Puntaje: 0</p>
+      <section aria-labelledby="pregunta">
+        <h2 id="pregunta">Cargando pregunta…</h2>
+        <div id="opciones"></div>
+      </section>
+      <p id="mensaje" role="status" aria-live="polite"></p>
+      <button id="siguiente" type="button" hidden>Siguiente pregunta</button>
+    </main>
+
+    <script>
+      const preguntaEl = document.querySelector("#pregunta");
+      const progresoEl = document.querySelector("#progreso");
+      const puntajeEl = document.querySelector("#puntaje");
+      const opcionesEl = document.querySelector("#opciones");
+      const mensajeEl = document.querySelector("#mensaje");
+      const siguienteBtn = document.querySelector("#siguiente");
+
+      let preguntas = [];
+      let indice = 0;
+      let puntaje = 0;
+
+      function mostrarPregunta() {
+        const pregunta = preguntas[indice];
+        preguntaEl.textContent = pregunta.texto;
+        progresoEl.textContent = `Pregunta ${indice + 1} de ${preguntas.length}`;
+        puntajeEl.textContent = `Puntaje: ${puntaje}`;
+        mensajeEl.textContent = "";
+        siguienteBtn.hidden = true;
+        opcionesEl.replaceChildren();
+
+        pregunta.opciones.forEach((opcion, indiceOpcion) => {
+          const boton = document.createElement("button");
+          boton.type = "button";
+          boton.textContent = opcion;
+          boton.addEventListener("click", () => enviarRespuesta(indiceOpcion));
+          opcionesEl.append(boton);
+        });
+      }
+
+      async function enviarRespuesta(opcion) {
+        const botones = opcionesEl.querySelectorAll("button");
+        botones.forEach((boton) => {
+          boton.disabled = true;
+        });
+
+        try {
+          const respuesta = await fetch("/api/responder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: preguntas[indice].id, opcion }),
+          });
+          if (!respuesta.ok) {
+            throw new Error("No se pudo comprobar la respuesta.");
+          }
+
+          const resultado = await respuesta.json();
+          if (resultado.correcta) {
+            puntaje += 1;
+            mensajeEl.textContent = "¡Correcto!";
+          } else {
+            const correcta = preguntas[indice].opciones[resultado.respuesta_correcta];
+            mensajeEl.textContent = `Incorrecto. La respuesta correcta es: ${correcta}`;
+          }
+          puntajeEl.textContent = `Puntaje: ${puntaje}`;
+          siguienteBtn.hidden = false;
+        } catch (error) {
+          mensajeEl.textContent = error.message;
+          botones.forEach((boton) => {
+            boton.disabled = false;
+          });
+        }
+      }
+
+      siguienteBtn.addEventListener("click", () => {
+        indice += 1;
+        if (indice < preguntas.length) {
+          mostrarPregunta();
+          return;
+        }
+
+        preguntaEl.textContent = "¡Trivia terminada!";
+        progresoEl.textContent = "Has completado todas las preguntas.";
+        puntajeEl.textContent = `Puntaje final: ${puntaje} de ${preguntas.length}`;
+        opcionesEl.replaceChildren();
+        mensajeEl.textContent = "";
+        siguienteBtn.hidden = true;
+      });
+
+      fetch("/api/preguntas")
+        .then((respuesta) => {
+          if (!respuesta.ok) {
+            throw new Error("No se pudieron cargar las preguntas.");
+          }
+          return respuesta.json();
+        })
+        .then((datos) => {
+          preguntas = datos;
+          if (preguntas.length === 0) {
+            throw new Error("No hay preguntas disponibles.");
+          }
+          mostrarPregunta();
+        })
+        .catch((error) => {
+          preguntaEl.textContent = "No se pudo iniciar la trivia.";
+          progresoEl.textContent = "";
+          mensajeEl.textContent = error.message;
+        });
+    </script>
+  </body>
+</html>
